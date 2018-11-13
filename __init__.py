@@ -104,8 +104,7 @@ class AionImporter(bpy.types.Operator, ImportHelper, IORIPOrientationHelper):
 
         self.report({'INFO'}, "Call import_cgf.load(context, **keywords)")
 
-        # from . import import_cgf
-        from import_cgf import ImportCGF
+        from .import_cgf import ImportCGF
 
         importer = ImportCGF()
         return importer.load(context, **keywords)
@@ -138,6 +137,12 @@ classes = (
     )
 
 def register():
+    script_dir = os.path.abspath(os.path.expanduser(os.path.dirname(__file__)))
+    try:
+        os.sys.path.index(script_dir)
+    except ValueError:
+        os.sys.path.append(script_dir)
+
     global classes, menu_func_import
     for cls in classes:
         bpy.utils.register_class(cls)

@@ -1,2 +1,8 @@
 # for projects that use SCons for building: http://http://www.scons.org/
 .sconsign.dblite
+io_scene_cgf.zip
+__pycache__/
+.ycm_extra_conf.py
+.mac_env/
+.venv/
+.win_env/

@@ -862,6 +862,7 @@ class ImportCGF:
             scene = context.scene
             new_objects = {} # put new objects here
             armature_chunk = None
+            node_transforms = {}
 
             # SPLIT_OB_OR_GROUP = bool(use_split_objects or use_split_groups)
             # Create meshes from the data, warning 'vertex_groups' wont suppot splitting
@@ -887,6 +888,8 @@ class ImportCGF:
                             b_mats,
                             self.dataname,
                             )
+                    node_transforms[chunk.object] = Matrix(chunk.transform.as_tuple()).transposed()
+
                 elif import_skeleton and isinstance(chunk, CgfFormat.BoneAnimChunk):
                     self.create_armatures(chunk, new_objects, scale_factor=scale_factor)
 
@@ -895,7 +898,11 @@ class ImportCGF:
                 if obj not in scene.objects.values():
                     scene.objects.link(obj)
                 # we could apply this anywhere before scaling
+                node_transform = node_transforms[chk] if chk in node_transforms else None
+                print('Node transform: %s' % node_transform)
                 obj.matrix_world = global_matrix
+                if node_transform:
+                    obj.matrix_world = obj.matrix_world * node_transform
                 print('Apply obj %s\' matrix world.' % obj)
 
             scene.update()

@@ -74,9 +74,20 @@ class ImportCGF:
         self.animations_loaded = []
 
     def get_material_name(self, name):
+        if isinstance(name, str):
+            name = name.encode()
         shader_begin = name.find(b'(')
         if shader_begin != -1:
             return name[:shader_begin]
+
+    def is_material_nodraw(self, name):
+        if isinstance(name, str):
+            name = name.encode()
+
+        s_begin = name.find(b'(')
+        if s_begin != -1:
+            return name[s_begin+1:s_begin+7] == b'NoDraw'
+        return False
 
     def create_std_material(self, chunk, project_root=None, use_cycles=False):
         """
@@ -211,8 +222,10 @@ class ImportCGF:
         print("Mesh num polygon: %i" % len(me.polygons))
         print("Mesh num loops: %i" % len(me.loops))
 
-        for material in unique_materials:
-            me.materials.append(material)
+        #  for material in unique_materials:
+            #  me.materials.append(material)
+
+        use_mat_ids = []
 
         if verts_nor and me.loops:
             me.create_normals_split()
@@ -240,10 +253,11 @@ class ImportCGF:
             if context_smooth_group:
                 blen_poly.use_smooth = True
 
-            if context_material_id:
+            if context_material_id >= 0:
                 if context_material_old != context_material_id:
                     mat = context_material_id
                     context_material_old = context_material_id
+                    use_mat_ids.append(mat)
                 blen_poly.material_index = mat
 
             blen_uvs = me.uv_layers[0]
@@ -262,6 +276,18 @@ class ImportCGF:
                     # TODO: set texture image
                     pass
 
+        print('Use material ids: %i' % len(use_mat_ids))
+
+        if len(use_mat_ids):
+            for mat_id in use_mat_ids:
+                print('Use material is(%i) => %s' % (mat_id, unique_materials[mat_id]))
+                me.materials.append(unique_materials[mat_id][0])
+
+        bNoDraw = False
+
+        if len(use_mat_ids) == 1 and unique_materials[use_mat_ids[0]][1] == True:
+            bNoDraw = True
+
         me.validate(clean_customdata=False)
         me.update(calc_edges=False)
 
@@ -275,6 +301,11 @@ class ImportCGF:
 
         ob = bpy.data.objects.new(me.name, me)
         new_objects[mesh_chunk] = ob
+
+        print('Hide Preview and Render: %i' % bNoDraw)
+        if bNoDraw:
+            ob.hide = True
+            ob.hide_render = True
 
     def parse_bone_name_list(self, chunk):
         assert(isinstance(chunk, CgfFormat.BoneNameListChunk))
@@ -852,7 +883,8 @@ class ImportCGF:
                     continue
 
                 # single material
-                b_mats.append(self.create_std_material(chunk, use_cycles=use_cycles))
+                b_mats.append((self.create_std_material(chunk, use_cycles=use_cycles),
+                    self.is_material_nodraw(chunk.name)))
 
 
             # Deselect all

@@ -238,6 +238,7 @@ class ImportCGF:
 
         context_material_old = -1 # avoid a dict lookup
         mat = 0 # rare case it may be un-initialized
+        material_index = 0
 
         def get_smooth_group_indices():
             if mesh_chunk.faces:
@@ -257,8 +258,14 @@ class ImportCGF:
                 if context_material_old != context_material_id:
                     mat = context_material_id
                     context_material_old = context_material_id
-                    use_mat_ids.append(mat)
-                blen_poly.material_index = mat
+                    try:
+                        idx = use_mat_ids.index(mat)
+                        material_index = idx
+                    except ValueError:
+                        use_mat_ids.append(mat)
+                        material_index = len(use_mat_ids) - 1
+
+                blen_poly.material_index = material_index
 
             blen_uvs = me.uv_layers[0]
             blen_vcs = me.vertex_colors[0] if (verts_col and len(verts_col)) else None

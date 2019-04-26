@@ -457,21 +457,13 @@ class ImportCGF:
 
         bpy.context.scene.update()
 
-        # Vertex Group/Weight
+        self.mapping_vertex_group_weights(new_objects)
+
         mesh_obj = new_objects.get(self.skin_mesh_chunk)
+
         if mesh_obj:
             if mesh_obj not in bpy.context.scene.objects.values():
                 bpy.context.scene.objects.link(mesh_obj)
-            for info in self.bone_infos:
-                mesh_obj.vertex_groups.new(info.name)
-
-        if self.skin_mesh_chunk.has_vertex_weights:
-            # import vertex weight from cgf mesh data.
-            for i, vw in enumerate(self.skin_mesh_chunk.vertex_weights):
-                for bl in vw.bone_links:
-                    rel_group_name = self.bone_infos[bl.bone].name
-                    blending = bl.blending
-                    mesh_obj.vertex_groups[rel_group_name].add([i], blending, 'ADD')
 
         if bpy.ops.object.mode_set.poll():
             bpy.ops.object.mode_set(mode='OBJECT')
@@ -482,6 +474,26 @@ class ImportCGF:
         anim_obj.select = True
         bpy.context.scene.objects.active = anim_obj
         bpy.ops.object.parent_set(type='ARMATURE')
+
+    def mapping_vertex_group_weights(self, new_objects):
+        if not self.bone_infos:
+            return
+
+        # Vertex Group/Weight
+        mesh_obj = new_objects.get(self.skin_mesh_chunk)
+        if mesh_obj:
+            for info in self.bone_infos:
+                if not mesh_obj.vertex_groups.get(info.name):
+                    mesh_obj.vertex_groups.new(info.name)
+
+        if self.skin_mesh_chunk and self.skin_mesh_chunk.has_vertex_weights:
+            # import vertex weight from cgf mesh data.
+            for i, vw in enumerate(self.skin_mesh_chunk.vertex_weights):
+                for bl in vw.bone_links:
+                    rel_group_name = self.bone_infos[bl.bone].name
+                    blending = bl.blending
+                    #  mesh_obj.vertex_groups[rel_group_name].add([i], blending, 'ADD')
+                    mesh_obj.vertex_groups[rel_group_name].add([i], blending, 'REPLACE')
 
     def get_bone_head_pos(self, bone_info):
         pos_head = [0.0] * 3
@@ -662,12 +674,17 @@ class ImportCGF:
         else:
             print('No action list found.')
 
-    def load_animation(self, action_name):
-        if action_name is None or len(action_name) == 0:
-            raise ValueError('Invalid action_name')
-        anim_info = self.get_animation_info(action_name)
-        if anim_info is None:
-            return None
+    def load_animation(self, action_name=None):
+        only_caf = self.filepath.endswith('.caf')
+        if not only_caf:
+            if action_name is None or len(action_name) == 0:
+                raise ValueError('Invalid action_name')
+            anim_info = self.get_animation_info(action_name)
+            if anim_info is None:
+                return None
+        else:
+            anim_info = { 'filepath': self.filepath }
+
         filepath = anim_info['filepath']
 
         blen_action_name = os.path.basename(os.path.splitext(filepath)[0])
@@ -826,6 +843,10 @@ class ImportCGF:
         self.armature_auto_connect = skeleton_auto_connect
         self.scale_factor = scale_factor
 
+        if self.filepath.endswith('.caf'):
+            self.load_animation()
+            return { 'FINISHED' }
+
         with ProgressReport(context.window_manager) as progress:
             progress.enter_substeps(1, "Importing CGF %r ... relpath: %r" % (filepath, relpath))
 
@@ -928,6 +949,7 @@ class ImportCGF:
                             self.dataname,
                             )
                     node_transforms[chunk.object] = Matrix(chunk.transform.as_tuple()).transposed()
+                    self.mapping_vertex_group_weights(new_objects)
 
                 elif import_skeleton and isinstance(chunk, CgfFormat.BoneAnimChunk):
                     self.create_armatures(chunk, new_objects, scale_factor=scale_factor)

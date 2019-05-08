@@ -717,8 +717,8 @@ class ImportCGF:
                 anim_info['position'] = Vector((chunk.initial_pos.x, chunk.initial_pos.y,
                     chunk.initial_pos.z))
             elif isinstance(chunk, CgfFormat.TimingChunk):
-                anim_info['secs_per_tick'] = chunk.secs_per_tick
-                anim_info['ticks_per_frame'] = chunk.ticks_per_frame
+                anim_info['secs_per_tick'] = 1.0 * chunk.secs_per_tick
+                anim_info['ticks_per_frame'] = 1.0 * chunk.ticks_per_frame
                 anim_info['start_frame'] = chunk.global_range.start
                 anim_info['end_frame'] = chunk.global_range.end
             elif isinstance(chunk, CgfFormat.ControllerChunk):
@@ -726,6 +726,9 @@ class ImportCGF:
 
         bpy.context.scene.frame_start = anim_info['start_frame']
         bpy.context.scene.frame_end = anim_info['end_frame']
+        bpy.context.scene.render.fps_base = 1.0
+        fps = 1.0 / (anim_info['secs_per_tick'] * anim_info['ticks_per_frame'])
+        bpy.context.scene.render.fps = math.ceil(fps)
 
         if bpy.ops.object.mode_set.poll():
             bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
@@ -767,7 +770,7 @@ class ImportCGF:
             for keyframe in keyframes:
                 (time, pos, rot, mat) = keyframe
                 raw_key_index = int(time / anim_info['ticks_per_frame'])
-                bpy.context.scene.frame_set(raw_key_index + 1)
+                bpy.context.scene.frame_set(raw_key_index)
 
                 if pose_bones[bone_name].parent is not None:
                     trans = pose_bones[bone_name].parent.matrix * fix_z.transposed() * mat * fix_z
@@ -781,7 +784,7 @@ class ImportCGF:
 
         self.animations_loaded.append(blen_action_name)
 
-        bpy.context.scene.frame_set(1)
+        bpy.context.scene.frame_set(0)
         bpy.context.scene.update()
 
     def inspect_project_root(self, top_level_dir='Objects'):

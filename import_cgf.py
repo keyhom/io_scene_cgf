@@ -944,7 +944,7 @@ class ImportCGF:
                     self.process_bone_initial_position(chunk)
 
             for chunk in data.chunks:
-                if isinstance(chunk, CgfFormat.NodeChunk):
+                if isinstance(chunk, CgfFormat.NodeChunk) and isinstance(chunk.object, CgfFormat.MeshChunk):
                     self.dataname = to_str(chunk.name)
                     self.create_mesh(new_objects,
                             chunk.object,

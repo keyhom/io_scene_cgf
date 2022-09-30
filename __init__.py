@@ -1,8 +1,8 @@
 bl_info = {
         "name": "CryTek(AION) CGF format",
         "author": "Jeremy Chen (jeremy7rd@outlook.com)",
-        "version": (1, 0, 0),
-        "blender": (2, 78, 0),
+        "version": (1, 1, 0),
+        "blender": (2, 83, 0),
         "location": "File > Import-Export",
         "description": "Import-Export CGF, Import CGF mesh, UV's, materials and textures",
         "warning": "",
@@ -30,7 +30,7 @@ from bpy.props import(
 
 from bpy_extras.io_utils import (
         ImportHelper,
-        orientation_helper_factory,
+        orientation_helper,
         path_reference_mode,
         axis_conversion,
         _check_axis_conversion
@@ -43,9 +43,8 @@ import hashlib
 
 from struct import *
 
-IORIPOrientationHelper = orientation_helper_factory("IORIPOrientationHelper", axis_forward='Y', axis_up='Z')
-
-class AionImporter(bpy.types.Operator, ImportHelper, IORIPOrientationHelper):
+@orientation_helper(axis_forward='Y', axis_up='Z')
+class AionImporter(bpy.types.Operator, ImportHelper):
     """Load a CtyTek(AION) CGF File"""
     bl_idname = "import_scene.cgf"
     bl_label = "Import CGF/CAF"
@@ -147,10 +146,10 @@ def register():
     for cls in classes:
         bpy.utils.register_class(cls)
 
-    bpy.types.INFO_MT_file_import.append(menu_func_import)
+    bpy.types.TOPBAR_MT_file_import.append(menu_func_import)
 
 def unregister():
-    bpy.types.INFO_MT_file_import.remove(menu_func_import)
+    bpy.types.TOPBAR_MT_file_import.remove(menu_func_import)
 
     for cls in classes:
         bpy.utils.unregister_class(cls)

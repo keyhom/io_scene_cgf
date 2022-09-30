@@ -13,7 +13,7 @@ import bmesh
 from math import *
 from mathutils import *
 
-from progress_report import ProgressReport, ProgressReportSubstep
+from bpy_extras.wm_utils.progress_report import ProgressReport, ProgressReportSubstep
 from .pyffi.formats.cgf import CgfFormat
 
 def to_str(bytes_val):

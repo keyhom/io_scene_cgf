@@ -1,4 +1,0 @@
-[submodule "pyffi"]
-	path = pyffi
-	url = https://keyhom@github.com/keyhom/pyffi.git
-	branch = develop

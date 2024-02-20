@@ -1,3 +1,6 @@
+import sys
+import os
+
 bl_info = {
         "name": "CryTek(AION) CGF format",
         "author": "Jeremy Chen (jeremy7rd@outlook.com)",
@@ -9,10 +12,24 @@ bl_info = {
         "support": "TESTING",
         "category": "Import-Export"}
 
-if "bpy" in locals():
-    import importlib
-    if "import_cgf" in locals():
-        importlib.reload(import_cgf)
+global current_dir
+
+def locate_dependencies():
+    # Python dependencies are bundled inside the io_scene_nif/dependencies folder
+    global current_dir
+    current_dir = os.path.dirname(__file__)
+    print(f"current_dir: {current_dir}")
+    _dependencies_path = os.path.join(current_dir, "dependencies")
+    if _dependencies_path not in sys.path:
+        sys.path.append(_dependencies_path)
+    del _dependencies_path
+
+    print(f"Loading: Blender io_scene_cgf Addon: 1.1.0")
+
+locate_dependencies()
+
+import time
+time.clock = time.perf_counter
 
 import bpy
 import bpy.props
@@ -38,7 +55,6 @@ from bpy_extras.io_utils import (
 
 import re
 import glob
-import os
 import hashlib
 
 from struct import *
@@ -79,7 +95,6 @@ class AionImporter(bpy.types.Operator, ImportHelper):
         )
 
     def execute(self, context):
-        import os
         #  fnames = [f.name for f in self.files]
         #  if len(fnames) == 0 or not os.path.isfile(os.path.join(self.directory, fnames[0])):
             #  self.report({'ERROR'}, 'No file is selected for import')

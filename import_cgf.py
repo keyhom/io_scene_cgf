@@ -79,8 +79,10 @@ class ImportCGF:
         self.animations_loaded = []
 
     def get_material_name(self, name):
-        if isinstance(name, str):
-            name = name.encode()
+        if isinstance(name, bytes):
+            name = name.decode()
+        # if isinstance(name, str):
+        #     name = name.encode()
         # shader_begin = name.find(b'(')
         # if shader_begin != -1:
         #     return name[:shader_begin]
@@ -95,7 +97,7 @@ class ImportCGF:
             return name[s_begin+1:s_begin+7].lower() == b'nodraw'
         return False
 
-    def create_std_material(self, chunk: CgfFormat.MtlChunk, project_root: str = None):
+    def create_std_material(self, chunk: CgfFormat.MtlChunk, reuse_images: bool = False, project_root: str = None):
         """
         Returns blender material from standard material chunk.
         For use with Far Cry.
@@ -151,15 +153,24 @@ class ImportCGF:
 
         project_root = '' if (project_root is None) else project_root
 
-        def load_material_image(image_path, alias_name=None):
+        def load_material_image(image_path, alias_name=None, reuse_images:bool=False):
             print("load_material_image: %s" % image_path)
             filepath = image_path
             if not os.path.isabs(image_path):
                 filepath = os.path.join(project_root, image_path)
             if not os.path.exists(filepath):
                 filepath = os.path.join(project_root, os.path.basename(image_path))
-            image = load_image(os.path.basename(filepath),
-                               os.path.dirname(filepath))
+
+            base_name = os.path.basename(filepath)
+            dir_name = os.path.dirname(filepath)
+
+            image = None
+            if reuse_images:
+                if bpy.data.images.find(base_name) != -1:
+                    image = bpy.data.images.get(base_name)
+
+            if image is None:
+                image = load_image(base_name, dir_name)
             if not alias_name:
                 alias_name = os.path.basename(image_path)
 
@@ -169,13 +180,12 @@ class ImportCGF:
 
         if chunk.tex_d.long_name:
             (alias_name, image) = load_material_image(to_str(chunk.tex_d.long_name),
-                                                      to_str(chunk.tex_d.name) if chunk.tex_d.name else None)
+                                                      to_str(chunk.tex_d.name) if chunk.tex_d.name else None, reuse_images)
             ma_wrap.base_color_texture.image = image
             ma_wrap.base_color_texture.texcoords = 'UV'
 
             if chunk.opacity < 1.0 or alpha_test:
-                ma_wrap.alpha_texture.image = image
-                ma_wrap.alpha_texture.texcoords = 'UV'
+                ma_wrap.material.node_tree.links.new(ma_wrap.node_principled_bsdf.inputs['Alpha'], ma_wrap.base_color_texture.node_image.outputs['Alpha'])
 
 
         if chunk.opacity < 1.0:
@@ -193,6 +203,8 @@ class ImportCGF:
             mat.use_backface_culling = True
 
         ma_wrap.update()
+
+        del load_material_image
 
         return mat
 
@@ -364,17 +376,19 @@ class ImportCGF:
         anim = bpy.data.armatures.new(dataname)
 
         anim_obj = bpy.data.objects.new(dataname, anim)
-        bpy.context.scene.objects.link(anim_obj)
-        for i in bpy.context.scene.objects:
-            i.select = False  # deselect all objects
-        anim_obj.select = True
+        collection = bpy.context.view_layer.active_layer_collection.collection
+        collection.objects.link(anim_obj)
+        for i in collection.objects:
+            i.select_set(False)  # deselect all objects
+        anim_obj.select_set(True)
 
         new_objects[chunk] = anim_obj
 
-        anim_obj.show_x_ray = True
+        # anim_obj.show_x_ray = True
 
         # set current armature to edit the bone
-        bpy.context.scene.objects.active = anim_obj
+        bpy.context.view_layer.objects.active = anim_obj
+
         # set mode to able to edit the bone
         if bpy.ops.object.mode_set.poll():
             bpy.ops.object.mode_set(mode='EDIT')
@@ -418,16 +432,20 @@ class ImportCGF:
 
             # Make roll matrix
             rMatrix = Matrix.Rotation(roll, 3, nor)
-            mat = rMatrix * bMatrix
+            mat = rMatrix @ bMatrix
             return mat
 
         def mat3_to_vec_roll(mat):
             vec = mat.col[1]
             vecmat = vec_roll_to_mat3(mat.col[1], 0)
             vecmatinv = vecmat.inverted()
-            rollmat = vecmatinv * mat
+            rollmat = vecmatinv @ mat
             roll = math.atan2(rollmat[0][2], rollmat[2][2])
             return vec, roll
+
+
+        if bpy.ops.object.mode_set.poll():
+            bpy.ops.object.mode_set(mode='EDIT')
 
         for info in self.bone_infos:
             # Go to edit mode for the bones
@@ -443,19 +461,21 @@ class ImportCGF:
 
             axis, roll = mat3_to_vec_roll(info.bind_mat.to_3x3())
 
+            axis.z = axis.z + 0.001
+
             newbone.head = info.bind_pos
             tmp_tail = info.bind_pos + axis / 5
 
             if len(info.children) == 0:
                 newbone.tail = tmp_tail
             elif len(info.children) == 1:
-                direction = info.bind_mat.inverted() * Vector(info.tail)
+                direction = info.bind_mat.inverted() @ Vector(info.tail)
                 nor = direction.normalized()
                 error_limit = 0.0001
                 if nor.dot(nor) > error_limit:
                     newbone.tail = info.tail
                 else:
-                    newbone.tail = info.bind_mat * Vector((0, 0.05, 0))
+                    newbone.tail = info.bind_mat @ Vector((0, 0.05, 0))
             else:
                 newbone.tail = info.tail
 
@@ -473,24 +493,25 @@ class ImportCGF:
                     #  and distance.x < epsilon and distance.y < epsilon and distance.z < epsilon:
                     newbone.use_connect = True
 
-        bpy.context.scene.update()
+        # bpy.context.scene.update()
 
         self.mapping_vertex_group_weights(new_objects)
 
         mesh_obj = new_objects.get(self.skin_mesh_chunk)
 
         if mesh_obj:
-            if mesh_obj not in bpy.context.scene.objects.values():
-                bpy.context.scene.objects.link(mesh_obj)
+            if mesh_obj not in collection.objects.values():
+                collection.objects.link(mesh_obj)
 
         if bpy.ops.object.mode_set.poll():
-            bpy.ops.object.mode_set(mode='OBJECT')
+            bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
 
         bpy.ops.object.select_all(action='DESELECT')  # deselect all object
 
-        mesh_obj.select = True
-        anim_obj.select = True
-        bpy.context.scene.objects.active = anim_obj
+        mesh_obj.select_set(True)
+        anim_obj.select_set(True)
+
+        bpy.context.view_layer.objects.active = anim_obj
         bpy.ops.object.parent_set(type='ARMATURE')
 
     def mapping_vertex_group_weights(self, new_objects):
@@ -502,7 +523,7 @@ class ImportCGF:
         if mesh_obj:
             for info in self.bone_infos:
                 if not mesh_obj.vertex_groups.get(info.name):
-                    mesh_obj.vertex_groups.new(info.name)
+                    mesh_obj.vertex_groups.new(name=info.name)
 
         if self.skin_mesh_chunk and self.skin_mesh_chunk.has_vertex_weights:
             # import vertex weight from cgf mesh data.
@@ -572,6 +593,7 @@ class ImportCGF:
         self.skin_mesh_chunk = chunk.mesh
 
         fix_z = Quaternion((0, 0, 1), math.radians(90)).to_matrix()
+        # fix_z = Matrix.Rotation(math.radians(-90), 4, 'Z')
 
         for i, mat in enumerate(chunk.initial_pos_matrices):
             info = self.bone_infos[i]
@@ -590,7 +612,8 @@ class ImportCGF:
             #  print('\n')
 
             info.bind_mat = Matrix(cgf_mat.as_tuple()).transposed()
-            info.bind_mat = info.bind_mat * fix_z.transposed().to_4x4()
+            # info.bind_mat = info.bind_mat * fix_z.transposed().to_4x4()
+            info.bind_mat = info.bind_mat @ fix_z.transposed().to_4x4()
             info.origin_mat = info.bind_mat.copy()
 
         for info in self.bone_infos:
@@ -859,6 +882,8 @@ class ImportCGF:
              filepath: str,
              *,
              convert_dds_to_png=False,
+             reuse_materials=False,
+             reuse_images=False,
              import_skeleton=True,
              skeleton_auto_connect=True,
              import_animations=False,
@@ -954,8 +979,20 @@ class ImportCGF:
 
 
                 # single material
-                b_mats.append((self.create_std_material(chunk),
-                               self.is_material_nodraw(chunk.name)))
+                mat_appended = False
+                found_mat = None
+                if reuse_materials is True:
+                    mat_name = self.get_material_name(chunk.name)
+                    if bpy.data.materials.find(mat_name) != -1:
+                        found_mat = bpy.data.materials.get(mat_name)
+
+                    if found_mat is not None:
+                        b_mats.append((found_mat, self.is_material_nodraw(chunk.name)))
+                        mat_appended = True
+                
+                if not mat_appended:
+                    b_mats.append((self.create_std_material(chunk, reuse_images),
+                                self.is_material_nodraw(chunk.name)))
 
             # Deselect all
             if bpy.ops.object.select_all.poll():

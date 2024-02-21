@@ -96,9 +96,14 @@ class AionImporter(bpy.types.Operator, ImportHelper):
         description="Convert all the texture images to PNG and save external."
     ) # type: ignore
 
-    reuse_material: BoolProperty(
+    reuse_materials: BoolProperty(
         default=False, name="ReUse Materials",
         description="Re-Use the existing materials via name matching."
+    ) # type: ignore
+
+    reuse_images: BoolProperty(
+        default=False, name="ReUse Images",
+        description="Re-Use the existing images via name matching."
     ) # type: ignore
 
     def execute(self, context: bpy.types.Context):
@@ -153,6 +158,12 @@ class AionImporter(bpy.types.Operator, ImportHelper):
 
         row = layout.row(align=True)
         row.prop(self, "convert_dds_to_png")
+
+        row = layout.row(align=True)
+        row.prop(self, "reuse_materials")
+
+        row = layout.row(align=True)
+        row.prop(self, "reuse_images")
 
 def menu_func_import(self, context):
     self.layout.operator(AionImporter.bl_idname,

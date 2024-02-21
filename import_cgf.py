@@ -19,7 +19,7 @@ from bpy_extras.wm_utils.progress_report import ProgressReport, ProgressReportSu
 from pyffi.formats.cgf import CgfFormat
 
 
-def to_str(bytes_val):
+def to_str(bytes_val) -> str:
     try:
         return bytes_val.decode('utf-8', "replace")
     except:
@@ -72,7 +72,7 @@ class ImportCGF:
         self.bone_infos = []
         self.skin_mesh_chunk = None
         self._filepath = None
-        self.project_root = None
+        self.project_root: str = None
         self.animation_map = None
         #  self.armature_auto_connect = False
         self.armature_auto_connect = True
@@ -81,9 +81,10 @@ class ImportCGF:
     def get_material_name(self, name):
         if isinstance(name, str):
             name = name.encode()
-        shader_begin = name.find(b'(')
-        if shader_begin != -1:
-            return name[:shader_begin]
+        # shader_begin = name.find(b'(')
+        # if shader_begin != -1:
+        #     return name[:shader_begin]
+        return name
 
     def is_material_nodraw(self, name):
         if isinstance(name, str):
@@ -91,16 +92,16 @@ class ImportCGF:
 
         s_begin = name.find(b'(')
         if s_begin != -1:
-            return name[s_begin+1:s_begin+7] == b'NoDraw'
+            return name[s_begin+1:s_begin+7].lower() == b'nodraw'
         return False
 
-    def create_std_material(self, chunk: CgfFormat.MtlChunk, project_root=None, use_cycles=False):
+    def create_std_material(self, chunk: CgfFormat.MtlChunk, project_root: str = None):
         """
         Returns blender material from standard material chunk.
         For use with Far Cry.
         """
         assert (isinstance(chunk, CgfFormat.MtlChunk))
-        assert (chunk.type == CgfFormat.MtlType.STANDARD)  # DEBUG
+        # assert (chunk.type == CgfFormat.MtlType.STANDARD)  # DEBUG
         # TODO: check duplicated imported
 
         if project_root is None:
@@ -118,8 +119,14 @@ class ImportCGF:
         mat = bpy.data.materials.new(to_str(mtlname))
         # set material parameters
 
-        ma_wrap = node_shader_utils.PrincipledBSDFWrapper(mat, is_readonly=False)
+        ma_wrap = node_shader_utils.PrincipledBSDFWrapper(
+            mat, is_readonly=False)
         cycles_material_wrap_map[mat] = ma_wrap
+
+        # print(f'chunk.col_d: {chunk.col_d}')
+        # print(f'chunk.col_s: {chunk.col_s}')
+        # print(f'chunk.col_a: {chunk.col_a}')
+        # print(f'chunk: {chunk}')
 
         diffuse_color = (float(chunk.col_d.r) / 255,
                          float(chunk.col_d.g) / 255,
@@ -131,16 +138,13 @@ class ImportCGF:
                          float(chunk.col_a.g) / 255,
                          float(chunk.col_a.b) / 255)
 
-        emit_amount = chunk.self_illum
+        ma_wrap.emission_strength = chunk.self_illum
 
-        ma_wrap.base_color_set(diffuse_color)
+        ma_wrap.base_color = diffuse_color
         ma_wrap.specular = sum(specular_color) / 3
         ma_wrap.specular_tint = chunk.spec_level
         ma_wrap.roughness = int((1.0 - chunk.spec_shininess) * 8.0)
-        ma_wrap.metallic = sum(ambient_color) / 3
-
-        if chunk.opacity < 1.0:
-            ma_wrap.alpha = chunk.opacity
+        # ma_wrap.metallic = sum(ambient_color) / 3
 
         # Don't load the same image multiple times
         context_imagepath_map = {}
@@ -152,6 +156,8 @@ class ImportCGF:
             filepath = image_path
             if not os.path.isabs(image_path):
                 filepath = os.path.join(project_root, image_path)
+            if not os.path.exists(filepath):
+                filepath = os.path.join(project_root, os.path.basename(image_path))
             image = load_image(os.path.basename(filepath),
                                os.path.dirname(filepath))
             if not alias_name:
@@ -159,12 +165,34 @@ class ImportCGF:
 
             return (alias_name, image)
 
+        alpha_test = chunk.alpha_test > 0.0 and chunk.alpha_test < 1.0
+
         if chunk.tex_d.long_name:
             (alias_name, image) = load_material_image(to_str(chunk.tex_d.long_name),
-                                                to_str(chunk.tex_d.name) if chunk.tex_d.name else None)
-
+                                                      to_str(chunk.tex_d.name) if chunk.tex_d.name else None)
             ma_wrap.base_color_texture.image = image
             ma_wrap.base_color_texture.texcoords = 'UV'
+
+            if chunk.opacity < 1.0 or alpha_test:
+                ma_wrap.alpha_texture.image = image
+                ma_wrap.alpha_texture.texcoords = 'UV'
+
+
+        if chunk.opacity < 1.0:
+            ma_wrap.alpha = chunk.opacity
+            mat.blend_method = 'BLEND'
+            mat.shadow_method = 'HASHED'
+        elif alpha_test:
+            mat.blend_method = 'CLIP'
+            mat.shadow_method = 'CLIP'
+            mat.alpha_threshold = chunk.alpha_test
+
+        if chunk.flags.two_sided == 1:
+            mat.use_backface_culling = False
+        else:
+            mat.use_backface_culling = True
+
+        ma_wrap.update()
 
         return mat
 
@@ -272,17 +300,16 @@ class ImportCGF:
 
         print('Use material ids: %i' % len(use_mat_ids))
 
-        # TODO: map materials.
+        bDraw = True
+
         if len(use_mat_ids):
             for mat_id in use_mat_ids:
                 print('Use material is(%i) => %s' %
                       (mat_id, unique_materials[mat_id]))
                 me.materials.append(unique_materials[mat_id][0])
+                bDraw = bDraw and not unique_materials[mat_id][1]
 
-        bNoDraw = False
-
-        if len(unique_materials) > 0 and len(use_mat_ids) == 1 and unique_materials[use_mat_ids[0]][1] == True:
-            bNoDraw = True
+        bNoDraw = not bDraw
 
         me.validate(clean_customdata=False)
         me.update(calc_edges=False)
@@ -292,7 +319,7 @@ class ImportCGF:
             me.loops.foreach_get("normal", clnors)
 
             me.normals_split_custom_set(tuple(zip(*(iter(clnors),) * 3)))
-            me.use_auto_smooth = True
+            # me.use_auto_smooth = True
             # me.show_edge_sharp = True
 
         ob = bpy.data.objects.new(me.name, me)
@@ -300,7 +327,8 @@ class ImportCGF:
 
         print('Hide Preview and Render: %i' % bNoDraw)
         if bNoDraw:
-            ob.hide_viewport = True
+            # ob.hide_viewport = True
+            # ob.hide_set(True)
             ob.hide_render = True
 
     def parse_bone_name_list(self, chunk):
@@ -830,11 +858,11 @@ class ImportCGF:
     def load(self, context: bpy.types.Context,
              filepath: str,
              *,
+             convert_dds_to_png=False,
              import_skeleton=True,
              skeleton_auto_connect=True,
              import_animations=False,
              scale_factor=1.0,
-             use_cycles=True,
              relpath=None,
              global_matrix: Matrix = None
              ):
@@ -915,20 +943,24 @@ class ImportCGF:
                     continue
 
                 # multi material: skip
-                if chunk.children or to_str(chunk.name).startswith('s_nouvmap') \
-                        or chunk.type != CgfFormat.MtlType.STANDARD \
-                        or self.get_material_name(chunk.name) is None:
+                # if chunk.children or to_str(chunk.name).startswith('s_nouvmap') \
+                #         or chunk.type != CgfFormat.MtlType.STANDARD \
+                #         or self.get_material_name(chunk.name) is None:
+                #     print(f'Ignore MtlChunk: {chunk.name}')
+                #     continue
+                if chunk.type == CgfFormat.MtlType.MULTI or self.get_material_name(chunk.name) is None:
+                    print(f'Ignore MtlChunk: {chunk.name}')
                     continue
 
+
                 # single material
-                b_mats.append((self.create_std_material(chunk, use_cycles=use_cycles),
-                    self.is_material_nodraw(chunk.name)))
+                b_mats.append((self.create_std_material(chunk),
+                               self.is_material_nodraw(chunk.name)))
 
             # Deselect all
             if bpy.ops.object.select_all.poll():
                 bpy.ops.object.select_all(action="DESELECT")
 
-            scene = context.scene
             view_layer = context.view_layer
             collection = view_layer.active_layer_collection.collection
             new_objects = {}  # put new objects here
@@ -981,6 +1013,8 @@ class ImportCGF:
 
             for i in collection.objects:
                 i.select_set(False)  # deselect all objects
+                if i.hide_render is True:
+                    i.hide_set(True)
 
             # Deselect all
             if bpy.ops.object.select_all.poll():

@@ -6,4 +6,3 @@ __pycache__/
 .mac_env/
 .venv/
 .win_env/
-dependencies/

@@ -153,13 +153,14 @@ class ImportCGF:
 
         project_root = '' if (project_root is None) else project_root
 
-        def load_material_image(image_path, alias_name=None, reuse_images:bool=False):
+        def load_material_image(image_path, alias_name=None, reuse_images: bool = False):
             print("load_material_image: %s" % image_path)
             filepath = image_path
             if not os.path.isabs(image_path):
                 filepath = os.path.join(project_root, image_path)
             if not os.path.exists(filepath):
-                filepath = os.path.join(project_root, os.path.basename(image_path))
+                filepath = os.path.join(
+                    project_root, os.path.basename(image_path))
 
             base_name = os.path.basename(filepath)
             dir_name = os.path.dirname(filepath)
@@ -185,8 +186,8 @@ class ImportCGF:
             ma_wrap.base_color_texture.texcoords = 'UV'
 
             if chunk.opacity < 1.0 or alpha_test:
-                ma_wrap.material.node_tree.links.new(ma_wrap.node_principled_bsdf.inputs['Alpha'], ma_wrap.base_color_texture.node_image.outputs['Alpha'])
-
+                ma_wrap.material.node_tree.links.new(
+                    ma_wrap.node_principled_bsdf.inputs['Alpha'], ma_wrap.base_color_texture.node_image.outputs['Alpha'])
 
         if chunk.opacity < 1.0:
             ma_wrap.alpha = chunk.opacity
@@ -303,7 +304,7 @@ class ImportCGF:
                     if blen_vcs:
                         (c1, c2, c3, c4) = verts_col[0 if (
                             face_idx is ...) else face_idx]
-                        blen_vcs.data[lidx].color = (c1, c2, c3)
+                        blen_vcs.data[lidx].color = (c1, c2, c3, c4)
 
             if verts_tex and uv_face:
                 if context_material_id:
@@ -442,7 +443,6 @@ class ImportCGF:
             rollmat = vecmatinv @ mat
             roll = math.atan2(rollmat[0][2], rollmat[2][2])
             return vec, roll
-
 
         if bpy.ops.object.mode_set.poll():
             bpy.ops.object.mode_set(mode='EDIT')
@@ -707,7 +707,7 @@ class ImportCGF:
             pos = Vector((k.abs_pos.x, k.abs_pos.y, k.abs_pos.z)) * scale
             rot = Quaternion((k.rel_quat.w, k.rel_quat.x,
                              k.rel_quat.y, k.rel_quat.z))
-            mat = Matrix.Translation(pos) * rot.to_matrix().to_4x4().inverted()
+            mat = Matrix.Translation(pos) @ rot.to_matrix().to_4x4().inverted()
             keyframe = (k.time, pos, rot, mat)
             keyframes.append(keyframe)
 
@@ -785,7 +785,7 @@ class ImportCGF:
         if bpy.ops.object.mode_set.poll():
             bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
 
-        active_obj = bpy.context.scene.objects.active
+        active_obj = bpy.context.view_layer.objects.active
         if active_obj.type == 'ARMATURE':
             pass
         elif active_obj.type == 'MESH' and active_obj.parent is not None and active_obj.parent.type == 'ARMATURE':
@@ -796,7 +796,7 @@ class ImportCGF:
         print("Armature: %s" % armature_name)
         print("Armature Data: %s" % armature_data_name)
 
-        bpy.context.scene.update()
+        # bpy.context.scene.update()
 
         # Creates an new animation data if the armature obj was no animation data attached.
         obj = bpy.data.objects[armature_name]
@@ -825,10 +825,9 @@ class ImportCGF:
                 bpy.context.scene.frame_set(raw_key_index)
 
                 if pose_bones[bone_name].parent is not None:
-                    trans = pose_bones[bone_name].parent.matrix * \
-                        fix_z.transposed() * mat * fix_z
+                    trans = pose_bones[bone_name].parent.matrix @ fix_z.transposed() @ mat @ fix_z
                 else:
-                    trans = mat * fix_z
+                    trans = mat @ fix_z
 
                 pose_bones[bone_name].matrix = trans
 
@@ -838,7 +837,7 @@ class ImportCGF:
         self.animations_loaded.append(blen_action_name)
 
         bpy.context.scene.frame_set(0)
-        bpy.context.scene.update()
+        # bpy.context.scene.update()
 
     def inspect_project_root(self, top_level_dir='Objects'):
         if self._filepath is None:
@@ -977,7 +976,6 @@ class ImportCGF:
                     print(f'Ignore MtlChunk: {chunk.name}')
                     continue
 
-
                 # single material
                 mat_appended = False
                 found_mat = None
@@ -987,12 +985,13 @@ class ImportCGF:
                         found_mat = bpy.data.materials.get(mat_name)
 
                     if found_mat is not None:
-                        b_mats.append((found_mat, self.is_material_nodraw(chunk.name)))
+                        b_mats.append(
+                            (found_mat, self.is_material_nodraw(chunk.name)))
                         mat_appended = True
-                
+
                 if not mat_appended:
                     b_mats.append((self.create_std_material(chunk, reuse_images),
-                                self.is_material_nodraw(chunk.name)))
+                                   self.is_material_nodraw(chunk.name)))
 
             # Deselect all
             if bpy.ops.object.select_all.poll():

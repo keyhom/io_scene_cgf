@@ -18,7 +18,6 @@ from mathutils import *
 from bpy_extras.wm_utils.progress_report import ProgressReport, ProgressReportSubstep
 from pyffi.formats.cgf import CgfFormat
 
-
 def to_str(bytes_val) -> str:
     try:
         return bytes_val.decode('utf-8', "replace")
@@ -61,7 +60,7 @@ class BoneInfo:
 class ImportCGF:
 
     __slots__ = ['_filepath', 'scale_factor', 'project_root', 'dataname', 'bone_names', 'ob_meshes', 'ob_armature', 'bone_infos',
-                 'skin_mesh_chunk', 'animation_map', 'armature_auto_connect', 'animations_loaded']
+                 'skin_mesh_chunk', 'animation_map', 'armature_auto_connect', 'animations_loaded', 'dds_convert']
 
     def __init__(self):
         self.scale_factor = 1.0
@@ -77,6 +76,7 @@ class ImportCGF:
         #  self.armature_auto_connect = False
         self.armature_auto_connect = True
         self.animations_loaded = []
+        self.dds_convert = False
 
     def get_material_name(self, name):
         if isinstance(name, bytes):
@@ -96,6 +96,35 @@ class ImportCGF:
         if s_begin != -1:
             return name[s_begin+1:s_begin+7].lower() == b'nodraw'
         return False
+
+    def convert_dds_to_png(self, filepath: str):
+        if not filepath.lower().endswith('.dds'):
+            return False
+
+        _dirname = os.path.dirname(filepath)
+        _basename = os.path.basename(filepath)
+        _filename, _extname = os.path.splitext(_basename)
+        _target_fullpath = os.path.join(_dirname, f'{_filename.lower()}.png')
+
+        # im = bpy_extras.image_utils.load_image(_basename, _dirname, verbose=True, check_existing=True)
+        # im.filepath_raw = _target_fullpath
+        # im.file_format = 'PNG'
+        # im.save()
+        ret, = bpy.ops.image.open(filepath=filepath, directory=_dirname, files=[{'name': _basename}], relative_path=True, show_multiview=True)
+        if ret == 'FINISHED':
+            im = bpy.data.images[_basename]
+            im.save_render(_target_fullpath)
+            bpy.data.images.remove(im)
+
+        # TODO: convert dds to png.
+        # with Image.open(filepath) as im:
+        #     _dirname = os.path.dirname(filepath)
+        #     _basename = os.path.basename(filepath)
+        #     _filename, _extname = os.path.splitext(_basename)
+        #     _target_fullpath = os.path.join(_dirname, f'{_filename.lower()}.png')
+        #     im.save(_target_fullpath)
+
+        return True
 
     def create_std_material(self, chunk: CgfFormat.MtlChunk, reuse_images: bool = False, project_root: str = None):
         """
@@ -162,8 +191,16 @@ class ImportCGF:
                 filepath = os.path.join(
                     project_root, os.path.basename(image_path))
 
+            filepath = filepath.replace('\\', '/').replace('//', '/')
+
             base_name = os.path.basename(filepath)
             dir_name = os.path.dirname(filepath)
+
+            fileNameWithoutExt, fileNameExt = os.path.splitext(base_name)
+
+            if self.dds_convert and fileNameExt.lower() == ".dds":
+                self.convert_dds_to_png(filepath)
+                base_name = fileNameWithoutExt.lower() + '.png'
 
             image = None
             if reuse_images:
@@ -612,7 +649,6 @@ class ImportCGF:
             #  print('\n')
 
             info.bind_mat = Matrix(cgf_mat.as_tuple()).transposed()
-            # info.bind_mat = info.bind_mat * fix_z.transposed().to_4x4()
             info.bind_mat = info.bind_mat @ fix_z.transposed().to_4x4()
             info.origin_mat = info.bind_mat.copy()
 
@@ -806,6 +842,9 @@ class ImportCGF:
         action = bpy.data.actions.new(name=blen_action_name)
         obj.animation_data.action = action
 
+        # action.frame_start = anim_info['start_frame']
+        # action.frame_end = anim_info['end_frame']
+
         # Parsing the source controllers into blender action data.
         ctrls = anim_info['ctrls']
 
@@ -903,6 +942,7 @@ class ImportCGF:
         self.filepath = filepath
         self.armature_auto_connect = skeleton_auto_connect
         self.scale_factor = scale_factor
+        self.dds_convert = convert_dds_to_png
 
         if self.filepath.endswith('.caf'):
             self.load_animation()
@@ -1071,5 +1111,9 @@ class ImportCGF:
                 progress.leave_substeps("Done, imported animations ...")
 
             progress.leave_substeps("Finished importing CGF %r ..." % filepath)
+
+
+        # Clean all
+        bpy.ops.outliner.orphans_purge()
 
         return {'FINISHED'}

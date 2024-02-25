@@ -97,12 +97,12 @@ class AionImporter(bpy.types.Operator, ImportHelper):
     ) # type: ignore
 
     reuse_materials: BoolProperty(
-        default=False, name="ReUse Materials",
+        default=True, name="ReUse Materials",
         description="Re-Use the existing materials via name matching."
     ) # type: ignore
 
     reuse_images: BoolProperty(
-        default=False, name="ReUse Images",
+        default=True, name="ReUse Images",
         description="Re-Use the existing images via name matching."
     ) # type: ignore
 

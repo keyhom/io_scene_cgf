@@ -81,11 +81,11 @@ class ImportCGF:
     def get_material_name(self, name):
         if isinstance(name, bytes):
             name = name.decode()
-        # if isinstance(name, str):
-        #     name = name.encode()
-        # shader_begin = name.find(b'(')
-        # if shader_begin != -1:
-        #     return name[:shader_begin]
+        shader_begin = name.find('(')
+        if shader_begin != -1:
+            shader_end = name.find(')')
+            if shader_end != -1:
+                return name[:shader_begin].lower() + name[shader_begin: shader_end] + name[shader_end:].lower()
         return name
 
     def is_material_nodraw(self, name):

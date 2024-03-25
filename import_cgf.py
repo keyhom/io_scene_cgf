@@ -1012,8 +1012,12 @@ class ImportCGF:
                 #         or self.get_material_name(chunk.name) is None:
                 #     print(f'Ignore MtlChunk: {chunk.name}')
                 #     continue
-                if chunk.type == CgfFormat.MtlType.MULTI or self.get_material_name(chunk.name) is None:
-                    print(f'Ignore MtlChunk: {chunk.name}')
+                if chunk.type == CgfFormat.MtlType.MULTI:
+                    print(f'Ignore MtlChunk: {chunk.name}, because of MtlType.MULTI')
+                    continue
+                elif self.get_material_name(chunk.name) is None:
+                    print(f'Ignore MtlChunk: {chunk.name}, unlegal material name.')
+                    b_mats.append((None, True))
                     continue
 
                 # single material

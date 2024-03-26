@@ -85,7 +85,12 @@ class ImportCGF:
         if shader_begin != -1:
             shader_end = name.find(')')
             if shader_end != -1:
-                return name[:shader_begin].lower() + name[shader_begin: shader_end] + name[shader_end:].lower()
+                shader_name = name[shader_begin: shader_end]
+                if shader_name.upper().startswith('(AION_'):
+                    shader_name = '(' + shader_name[6:]
+
+                shader_name = shader_name.replace(' ', '') # shader name can't contains space char.
+                return name[:shader_begin].lower() + shader_name + name[shader_end:].lower()
         return name
 
     def is_material_nodraw(self, name):
@@ -114,6 +119,7 @@ class ImportCGF:
         if ret == 'FINISHED':
             im = bpy.data.images[_basename]
             im.save_render(_target_fullpath)
+            im.user_clear()
             bpy.data.images.remove(im)
 
         # TODO: convert dds to png.

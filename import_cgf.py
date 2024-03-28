@@ -1094,7 +1094,7 @@ class ImportCGF:
                 print('Node transform: %s' % node_transform)
                 obj.matrix_world = global_matrix
                 if node_transform:
-                    obj.matrix_world = obj.matrix_world * node_transform
+                    obj.matrix_world = obj.matrix_world @ node_transform
                 print('Apply obj %s\' matrix world.' % obj)
 
             for i in collection.objects:

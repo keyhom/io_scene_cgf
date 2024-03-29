@@ -1089,6 +1089,8 @@ class ImportCGF:
             for (chk, obj) in new_objects.items():
                 if obj not in collection.objects.values():
                     collection.objects.link(obj)
+                    obj.select_set(True)
+                    bpy.ops.object.shade_smooth()
                 # we could apply this anywhere before scaling
                 node_transform = node_transforms[chk] if chk in node_transforms else None
                 print('Node transform: %s' % node_transform)

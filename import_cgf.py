@@ -281,6 +281,9 @@ class ImportCGF:
 
         uv_faces = list(mesh_chunk.get_uv_triangles())
 
+        if len(faces) != len(uv_faces) and len(uv_faces) == 0:
+            uv_faces = len(faces) * [(0, 0)]
+
         me.from_pydata(verts_loc, [], faces)
 
         print("Mesh num vertices: %i" % len(me.vertices))
@@ -313,12 +316,12 @@ class ImportCGF:
                     yield face.sm_group
             elif mesh_chunk.mesh_subsets:
                 for meshsubset in mesh_chunk.mesh_subsets.mesh_subsets:
-                    for i in range(meshsubset.num_indices / 3):
+                    for i in range(meshsubset.num_indices // 3):
                         yield meshsubset.sm_group
 
         for i, (face, uv_face, blen_poly, context_material_id, context_smooth_group) in enumerate(zip(faces, uv_faces, me.polygons,
                                                                                                       mesh_chunk.get_material_indices(), get_smooth_group_indices())):
-            if context_smooth_group:
+            if context_smooth_group > 0:
                 blen_poly.use_smooth = True
 
             if context_material_id >= 0:
@@ -333,8 +336,13 @@ class ImportCGF:
                         material_index = len(use_mat_ids) - 1
 
                 blen_poly.material_index = material_index
+            else:
+                print(f'mesh_chunk.get_material_indices() return a material id less than 0.')
 
-            blen_uvs = me.uv_layers[0]
+            blen_uvs = None
+            if len(me.uv_layers) > 0:
+                blen_uvs = me.uv_layers[0]
+
             blen_vcs = me.vertex_colors[0] if (
                 verts_col and len(verts_col)) else None
 
@@ -342,8 +350,9 @@ class ImportCGF:
                 for face_idx, face_uvidx, lidx in zip(face, uv_face, blen_poly.loop_indices):
                     me.loops[lidx].normal[:] = verts_nor[0 if (
                         face_idx is ...) else face_idx]
-                    blen_uvs.data[lidx].uv = verts_tex[0 if (
-                        face_uvidx is ...) else face_uvidx]
+                    if blen_uvs is not None:
+                        blen_uvs.data[lidx].uv = verts_tex[0 if (
+                            face_uvidx is ...) else face_uvidx]
                     if blen_vcs:
                         (c1, c2, c3, c4) = verts_col[0 if (
                             face_idx is ...) else face_idx]

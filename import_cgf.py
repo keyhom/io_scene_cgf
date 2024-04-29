@@ -18,6 +18,7 @@ from mathutils import *
 from bpy_extras.wm_utils.progress_report import ProgressReport, ProgressReportSubstep
 from pyffi.formats.cgf import CgfFormat
 
+
 def to_str(bytes_val) -> str:
     try:
         return bytes_val.decode('utf-8', "replace")
@@ -89,7 +90,8 @@ class ImportCGF:
                 if shader_name.upper().startswith('(AION_'):
                     shader_name = '(' + shader_name[6:]
 
-                shader_name = shader_name.replace(' ', '') # shader name can't contains space char.
+                # shader name can't contains space char.
+                shader_name = shader_name.replace(' ', '')
                 return name[:shader_begin].lower() + shader_name + name[shader_end:].lower()
         return name
 
@@ -115,7 +117,8 @@ class ImportCGF:
         # im.filepath_raw = _target_fullpath
         # im.file_format = 'PNG'
         # im.save()
-        ret, = bpy.ops.image.open(filepath=filepath, directory=_dirname, files=[{'name': _basename}], relative_path=True, show_multiview=True)
+        ret, = bpy.ops.image.open(filepath=filepath, directory=_dirname, files=[
+                                  {'name': _basename}], relative_path=True, show_multiview=True)
         if ret == 'FINISHED':
             im = bpy.data.images[_basename]
             im.save_render(_target_fullpath)
@@ -188,6 +191,14 @@ class ImportCGF:
 
         project_root = '' if (project_root is None) else project_root
 
+        def determine_texture_map(chunk: CgfFormat.MtlChunk, name: str) -> bool:
+            tex_map = chunk.__getattribute__(name)
+            if tex_map and tex_map.type > 0:
+                print(
+                    f"{chunk.name} -> texture ({name}): long_name = {tex_map.long_name}, type = {tex_map.type}")
+                return True
+            return False
+
         def load_material_image(image_path, alias_name=None, reuse_images: bool = False):
             print("load_material_image: %s" % image_path)
             filepath = image_path
@@ -222,15 +233,70 @@ class ImportCGF:
 
         alpha_test = chunk.alpha_test > 0.0 and chunk.alpha_test < 1.0
 
-        if chunk.tex_d.long_name:
-            (alias_name, image) = load_material_image(to_str(chunk.tex_d.long_name),
-                                                      to_str(chunk.tex_d.name) if chunk.tex_d.name else None, reuse_images)
-            ma_wrap.base_color_texture.image = image
-            ma_wrap.base_color_texture.texcoords = 'UV'
+        # determines how many textures specified.
+        if chunk.type == 1:
+            has_opacity_texture = False
+            if determine_texture_map(chunk, 'tex_o'):
+                (alias_name, image) = load_material_image(to_str(chunk.tex_o.long_name), to_str(
+                    chunk.tex_o.name) if chunk.tex_o.name else None, reuse_images)
 
-            if chunk.opacity < 1.0 or alpha_test:
+                # opacity_texture = node_shader_utils.ShaderImageTextureWrapper(ma_wrap, ma_wrap.node_principled_bsdf, ma_wrap.node_principled_bsdf.inputs['Alpha'])
+                # opacity_texture.image = image
+                # opacity_texture.texcoords = 'UV'
+                ma_wrap.alpha_texture.image = image
+                ma_wrap.alpha_texture.texcoords = 'UV'
                 ma_wrap.material.node_tree.links.new(
-                    ma_wrap.node_principled_bsdf.inputs['Alpha'], ma_wrap.base_color_texture.node_image.outputs['Alpha'])
+                    ma_wrap.node_principled_bsdf.inputs['Alpha'], ma_wrap.alpha_texture.node_image.outputs['Alpha'])
+                has_opacity_texture = True
+
+            if determine_texture_map(chunk, 'tex_d'):
+                (alias_name, image) = load_material_image(to_str(chunk.tex_d.long_name),
+                                                          to_str(chunk.tex_d.name) if chunk.tex_d.name else None, reuse_images)
+                ma_wrap.base_color_texture.image = image
+                ma_wrap.base_color_texture.texcoords = 'UV'
+
+                if not has_opacity_texture and (chunk.opacity < 1.0 or alpha_test):
+                    ma_wrap.material.node_tree.links.new(
+                        ma_wrap.node_principled_bsdf.inputs['Alpha'], ma_wrap.base_color_texture.node_image.outputs['Alpha'])
+
+            if determine_texture_map(chunk, 'tex_a'):
+                (alias_name, image) = load_material_image(to_str(chunk.tex_a.long_name), to_str(
+                    chunk.tex_a.name) if chunk.tex_a.name else None, reuse_images)
+                ma_wrap.emission_color_texture.image = image
+                ma_wrap.emission_color_texture.texcoords = 'UV'
+            if determine_texture_map(chunk, 'tex_s'):
+                (alias_name, image) = load_material_image(to_str(chunk.tex_s.long_name), to_str(
+                    chunk.tex_s.name) if chunk.tex_s.name else None, reuse_images)
+                ma_wrap.specular_texture.image = image
+                ma_wrap.specular_texture.texcoords = 'UV'
+
+            if determine_texture_map(chunk, 'tex_b'):
+                (alias_name, image) = load_material_image(to_str(chunk.tex_b.long_name), to_str(
+                    chunk.tex_b.name) if chunk.tex_b.name else None, reuse_images)
+                ma_wrap.normalmap_texture.image = image
+                ma_wrap.normalmap_texture.texcoords = 'UV'
+            if determine_texture_map(chunk, 'tex_g'):
+                (alias_name, image) = load_material_image(to_str(chunk.tex_g.long_name), to_str(
+                    chunk.tex_g.name) if chunk.tex_g.name else None, reuse_images)
+                ma_wrap.roughness_texture.image = image
+                ma_wrap.roughness_texture.texcoords = 'UV'
+            if determine_texture_map(chunk, 'tex_f'):
+                print('No implemented for tex_f.');
+                pass
+            if determine_texture_map(chunk, 'tex_c'):
+                print('No implemented for tex_f.');
+                pass
+            if determine_texture_map(chunk, 'tex_r'):
+                (alias_name, image) = load_material_image(to_str(chunk.tex_r.long_name), to_str(
+                    chunk.tex_r.name) if chunk.tex_r.name else None, reuse_images)
+                ma_wrap.metallic_texture.image = image
+                ma_wrap.metallic_texture.texcoords = 'UV'
+            if determine_texture_map(chunk, 'tex_subsurf'):
+                print('No implemented for tex_subsurf.');
+                pass
+            if determine_texture_map(chunk, 'tex_detail'):
+                print('No implemented for tex_detail.');
+                pass
 
         if chunk.opacity < 1.0:
             ma_wrap.alpha = chunk.opacity
@@ -337,7 +403,8 @@ class ImportCGF:
 
                 blen_poly.material_index = material_index
             else:
-                print(f'mesh_chunk.get_material_indices() return a material id less than 0.')
+                print(
+                    f'mesh_chunk.get_material_indices() return a material id less than 0.')
 
             blen_uvs = None
             if len(me.uv_layers) > 0:
@@ -365,16 +432,14 @@ class ImportCGF:
 
         print('Use material ids: %i' % len(use_mat_ids))
 
-        bDraw = True
+        bNoDraw = True
 
         if len(use_mat_ids):
             for mat_id in use_mat_ids:
                 print('Use material is(%i) => %s' %
                       (mat_id, unique_materials[mat_id]))
                 me.materials.append(unique_materials[mat_id][0])
-                bDraw = bDraw and not unique_materials[mat_id][1]
-
-        bNoDraw = not bDraw
+                bNoDraw = bNoDraw and unique_materials[mat_id][1]
 
         me.validate(clean_customdata=False)
         me.update(calc_edges=False)
@@ -1028,10 +1093,12 @@ class ImportCGF:
                 #     print(f'Ignore MtlChunk: {chunk.name}')
                 #     continue
                 if chunk.type == CgfFormat.MtlType.MULTI:
-                    print(f'Ignore MtlChunk: {chunk.name}, because of MtlType.MULTI')
+                    print(
+                        f'Ignore MtlChunk: {chunk.name}, because of MtlType.MULTI')
                     continue
                 elif self.get_material_name(chunk.name) is None:
-                    print(f'Ignore MtlChunk: {chunk.name}, unlegal material name.')
+                    print(
+                        f'Ignore MtlChunk: {chunk.name}, unlegal material name.')
                     b_mats.append((None, True))
                     continue
 
@@ -1132,7 +1199,6 @@ class ImportCGF:
                 progress.leave_substeps("Done, imported animations ...")
 
             progress.leave_substeps("Finished importing CGF %r ..." % filepath)
-
 
         # Clean all
         bpy.ops.outliner.orphans_purge()

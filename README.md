@@ -1,12 +1,19 @@
-# io_scene_cgf
+# io\_scene\_cgf
+
 CGF file format plugin for importing in blender.
 
+**Recommand use blender 3.0+**, i was working on blender 3.6.
+
 ## Setup
-Build the sources to an blender addon zip
+
+Custom zip the sources including below:
 
 ```
-python setup.py
+[..]
+  |- dependencies/
+  |- __init__.py
+  |- import_cgf.py
 ```
-> A zip file named 'io_scene_cgf.zip' was generated at the working directory.
 
-In blender, install the 'io_scene_cgf.zip' from the user preference panel.
+In blender, install the 'custom zip file' from the user preference panel.
+

@@ -81,7 +81,10 @@ class ImportCGF:
 
     def get_material_name(self, name):
         if isinstance(name, bytes):
-            name = name.decode()
+            try:
+                name = name.decode()
+            except Exception as e:
+                name = name.decode('euc-kr')
         shader_begin = name.find('(')
         if shader_begin != -1:
             shader_end = name.find(')')
